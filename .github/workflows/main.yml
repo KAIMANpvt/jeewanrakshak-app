@@ -15,8 +15,6 @@ jobs:
           fi
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
-          echo "Found project at $PROJ"
-          ls -la $PROJ/android
 
       - uses: actions/setup-java@v4
         with:
@@ -26,24 +24,24 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.24.5'
 
-      - name: FULL FIX for Kotlin 1.4 Error
+      - name: FIX - Use Compatible Gradle Versions
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "=== Fixing all gradle files ==="
-          # 1. Gradle wrapper ko 8.0 pe update karo
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
-          
-          # 2. android/build.gradle ko pura naya likh do - ye sabse important hai
+          # 1. Sabse stable Gradle 7.6.3 use karo
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-7.6.3-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+
+          # 2. build.gradle ko stable versions pe lao - AGP 7.4.2 + Kotlin 1.9.10
           cat > android/build.gradle << 'EOF'
           buildscript {
-              ext.kotlin_version = '1.9.22'
+              ext.kotlin_version = '1.9.10'
               repositories {
                   google()
                   mavenCentral()
               }
               dependencies {
-                  classpath "com.android.tools.build:gradle:8.1.0"
+                  classpath "com.android.tools.build:gradle:7.4.2"
                   classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
               }
           }
@@ -64,27 +62,15 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-
-          # 3. app/build.gradle me jvmTarget fix karo
-          sed -i "s/jvmTarget = .*/jvmTarget = '1.8'/" android/app/build.gradle || true
-          sed -i "s/kotlinOptions {/kotlinOptions {\n        jvmTarget = '1.8'/" android/app/build.gradle || true
-          
-          # 4. settings.gradle me kotlin version fix
-          sed -i "s/1.4/1.8/g" android/settings.gradle || true
-          sed -i "s/1.6.10/1.9.22/g" android/settings.gradle || true
-          sed -i "s/1.7.10/1.9.22/g" android/settings.gradle || true
-          sed -i "s/1.8.10/1.9.22/g" android/settings.gradle || true
-          
           cat android/build.gradle
-          cat android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --split-per-abi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: jeewanrakshak-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          name: jeewanrakshak-apks
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
