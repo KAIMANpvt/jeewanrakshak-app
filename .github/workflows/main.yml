@@ -5,22 +5,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Prepare Flutter Project
+        run: |
+          # 1. Agar zip hai to unzip karo
+          if ls *.zip 1> /dev/null 2>&1; then
+            sudo apt-get install -y unzip
+            for z in *.zip; do unzip -o "$z"; done
+            rm -rf *.zip
+          fi
+          # 2. pubspec.yaml dhoondo aur uska folder PROJECT_DIR me save karo
+          PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
+          echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
+          echo "Found project at $PROJ"
+          ls -la $PROJ
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      - name: Unzip if needed
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          if ls *.zip 1> /dev/null 2>&1; then
-            unzip -o "*.zip"
-          fi
-          ls -la
-      - run: flutter pub get
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: jeewanrakshak-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
