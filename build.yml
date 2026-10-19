@@ -1,0 +1,34 @@
+name: Build APK
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip Project
+        run: |
+          sudo apt-get install -y unzip
+          unzip -o "*.zip"
+          ls -la
+          # agar zip ke andar ek folder hai to usko bahar nikaalo
+          if [ -d "jeewanrakshak_app" ]; then mv jeewanrakshak_app/* .; fi
+          if [ -d "jeewanrakshak" ]; then mv jeewanrakshak/* .; fi
+          ls -la
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
