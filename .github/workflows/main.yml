@@ -24,24 +24,24 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.5'
+          flutter-version: '3.32.0'
 
-      - name: FIX - Use Compatible Gradle Versions
+      - name: FIX - Use Latest Compatible Gradle + SDK 35
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          # 1. Sabse stable Gradle 7.6.3 use karo
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-7.6.3-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          # 1. Latest Gradle 8.7
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
 
-          # 2. build.gradle ko stable versions pe lao - AGP 7.4.2 + Kotlin 1.9.10
+          # 2. Latest AGP 8.3.0 + Kotlin 1.9.22
           cat > android/build.gradle << 'EOF'
           buildscript {
-              ext.kotlin_version = '1.9.10'
+              ext.kotlin_version = '1.9.22'
               repositories {
                   google()
                   mavenCentral()
               }
               dependencies {
-                  classpath "com.android.tools.build:gradle:7.4.2"
+                  classpath "com.android.tools.build:gradle:8.3.0"
                   classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
               }
           }
@@ -62,7 +62,14 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-          cat android/build.gradle
+
+          # 3. SDK 35 force karo app/build.gradle me
+          sed -i "s/compileSdkVersion .*/compileSdkVersion 35/" android/app/build.gradle || true
+          sed -i "s/compileSdk .*/compileSdk 35/" android/app/build.gradle || true
+          sed -i "s/targetSdkVersion .*/targetSdkVersion 35/" android/app/build.gradle || true
+          sed -i "s/targetSdk .*/targetSdk 35/" android/app/build.gradle || true
+          sed -i "s/flutter.compileSdkVersion/35/g" android/app/build.gradle || true
+          sed -i "s/flutter.targetSdkVersion/35/g" android/app/build.gradle || true
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
