@@ -15,7 +15,6 @@ jobs:
           fi
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
-          echo "Project at $PROJ"
 
       - uses: actions/setup-java@v4
         with:
@@ -27,24 +26,35 @@ jobs:
           channel: 'stable'
           flutter-version: '3.32.0'
 
-      - name: Fix app_links error
+      - name: FIX app_links permanently
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          # 1. Original android files wapas lao jo humne kharab kiye the
           git checkout -- android/ || true
           
-          # 2. local.properties me SDK 35 set karo - ye sahi tareeka hai
-          mkdir -p android
+          # 1. pubspec.yaml me app_links ko latest 6.x pe force karo
+          echo "Upgrading app_links in pubspec.yaml..."
+          sed -i 's/app_links:.*/app_links: ^6.1.0/' pubspec.yaml || true
+          sed -i 's/app_links: ^.*/app_links: ^6.1.0/' pubspec.yaml || true
+          grep -n app_links pubspec.yaml || true
+
+          # 2. Agar sed fail ho to dependency_overrides add karo
+          if ! grep -q "dependency_overrides" pubspec.yaml; then
+            echo "" >> pubspec.yaml
+            echo "dependency_overrides:" >> pubspec.yaml
+            echo "  app_links: ^6.1.0" >> pubspec.yaml
+          fi
+          cat pubspec.yaml | tail -20
+
+          # 3. local.properties sahi se banao
           cat > android/local.properties << 'EOF'
           sdk.dir=/usr/local/lib/android/sdk
           flutter.compileSdkVersion=35
           flutter.targetSdkVersion=35
-          flutter.minSdkVersion=21
+          flutter.minSdkVersion=23
           flutter.ndkVersion=26.3.11579264
-          flutter.buildMode=release
           EOF
 
-          # 3. Gradle 8.7 + AGP 8.3.0 + Kotlin 1.9.22 (latest stable combo)
+          # 4. Gradle 8.7 + AGP 8.3.0
           echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
           cat > android/build.gradle << 'EOF'
           buildscript {
@@ -62,18 +72,18 @@ jobs:
           tasks.register("clean", Delete) { delete rootProject.buildDir }
           EOF
 
-          # 4. app_links ko latest pe upgrade karo - isse VersionUtils error fix hota hai
+          # 5. Purana lock hatake naya pub get karo
+          rm -f pubspec.lock
+          flutter clean
+          flutter pub get
           flutter pub upgrade app_links
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter clean
-          flutter pub get
           flutter build apk --release --split-per-abi
 
       - uses: actions/upload-artifact@v4
         with:
           name: jeewanrakshak-apks
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
-          
