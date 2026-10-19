@@ -15,6 +15,7 @@ jobs:
           fi
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
+          echo "Project at $PROJ"
 
       - uses: actions/setup-java@v4
         with:
@@ -26,54 +27,48 @@ jobs:
           channel: 'stable'
           flutter-version: '3.32.0'
 
-      - name: FIX - Use Latest Compatible Gradle + SDK 35
+      - name: Fix app_links error
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          # 1. Latest Gradle 8.7
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          # 1. Original android files wapas lao jo humne kharab kiye the
+          git checkout -- android/ || true
+          
+          # 2. local.properties me SDK 35 set karo - ye sahi tareeka hai
+          mkdir -p android
+          cat > android/local.properties << 'EOF'
+          sdk.dir=/usr/local/lib/android/sdk
+          flutter.compileSdkVersion=35
+          flutter.targetSdkVersion=35
+          flutter.minSdkVersion=21
+          flutter.ndkVersion=26.3.11579264
+          flutter.buildMode=release
+          EOF
 
-          # 2. Latest AGP 8.3.0 + Kotlin 1.9.22
+          # 3. Gradle 8.7 + AGP 8.3.0 + Kotlin 1.9.22 (latest stable combo)
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
           cat > android/build.gradle << 'EOF'
           buildscript {
               ext.kotlin_version = '1.9.22'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
               dependencies {
                   classpath "com.android.tools.build:gradle:8.3.0"
                   classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
               }
           }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
+          allprojects { repositories { google(); mavenCentral() } }
           rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
+          subprojects { project.buildDir = "${rootProject.buildDir}/${project.name}" }
+          subprojects { project.evaluationDependsOn(':app') }
+          tasks.register("clean", Delete) { delete rootProject.buildDir }
           EOF
 
-          # 3. SDK 35 force karo app/build.gradle me
-          sed -i "s/compileSdkVersion .*/compileSdkVersion 35/" android/app/build.gradle || true
-          sed -i "s/compileSdk .*/compileSdk 35/" android/app/build.gradle || true
-          sed -i "s/targetSdkVersion .*/targetSdkVersion 35/" android/app/build.gradle || true
-          sed -i "s/targetSdk .*/targetSdk 35/" android/app/build.gradle || true
-          sed -i "s/flutter.compileSdkVersion/35/g" android/app/build.gradle || true
-          sed -i "s/flutter.targetSdkVersion/35/g" android/app/build.gradle || true
+          # 4. app_links ko latest pe upgrade karo - isse VersionUtils error fix hota hai
+          flutter pub upgrade app_links
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          flutter clean
           flutter pub get
           flutter build apk --release --split-per-abi
 
@@ -81,3 +76,4 @@ jobs:
         with:
           name: jeewanrakshak-apks
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
+          
