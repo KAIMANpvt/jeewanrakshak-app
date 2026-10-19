@@ -26,35 +26,27 @@ jobs:
           channel: 'stable'
           flutter-version: '3.22.3'
 
-      - name: FIX with Direct Patch
+      - name: RECREATE Android Folder - Ultimate Fix
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          git checkout -- android/ || true
+          echo "Original pubspec.yaml:"
+          cat pubspec.yaml | grep -A2 app_links || true
+
+          # 1. Purana kharab android folder hatao
+          rm -rf android
           
-          # 1. pubspec se app_links aur geocoding ko downgrade karo jo SDK 34 pe chale
+          # 2. pubspec.lock hatao aur dependencies fix karo
+          rm -f pubspec.lock
           sed -i 's/app_links:.*/app_links: ^3.4.4/' pubspec.yaml || true
           sed -i 's/geocoding:.*/geocoding: ^2.2.2/' pubspec.yaml || true
-          sed -i 's/geocoding_android:.*/geocoding_android: ^2.1.0/' pubspec.yaml || true
+          sed -i 's/geocoding_android:.*/geocoding_android: 2.1.0/' pubspec.yaml || true
           
-          # 2. Gradle 7.6.3 - purana stable jo app_links ke saath crash nahi karta
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-7.6.3-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
-          cat > android/build.gradle << 'EOF'
-          buildscript {
-              ext.kotlin_version = '1.7.10'
-              repositories { google(); mavenCentral() }
-              dependencies {
-                  classpath "com.android.tools.build:gradle:7.4.2"
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-              }
-          }
-          allprojects { repositories { google(); mavenCentral() } }
-          rootProject.buildDir = '../build'
-          subprojects { project.buildDir = "${rootProject.buildDir}/${project.name}" }
-          subprojects { project.evaluationDependsOn(':app') }
-          tasks.register("clean", Delete) { delete rootProject.buildDir }
-          EOF
+          # 3. Naya saaf android folder banao - ye Flutter 3.22 ke hisab se banega
+          flutter clean
+          flutter pub get
+          flutter create --platforms=android .
 
-          # 3. local.properties - SDK 34 rakho, 35 mat lo
+          # 4. SDK 34 set karo local.properties me
           cat > android/local.properties << 'EOF'
           sdk.dir=/usr/local/lib/android/sdk
           flutter.compileSdkVersion=34
@@ -65,51 +57,17 @@ jobs:
           flutter.versionName=1.0.0
           EOF
 
-          rm -f pubspec.lock
-          flutter clean
-          flutter pub get
-
-          # 4. DIRECT PATCH - app_links ke gradle file me null check inject karo
-          echo "Patching app_links..."
-          find $HOME/.pub-cache -path "*app_links*/android/build.gradle" -print | while read f; do
-            echo "Patching $f"
-            # version1 null ho to 1.0.0 use karo
-            sed -i 's/VersionUtils.mostRecentSemanticVersion/VersionUtils.mostRecentSemanticVersion("1.0.0", /' "$f" || true
-            # Agar fir bhi error de to us file ko simple bana do
-            cat "$f" | head -30
-          done
-
-          # 5. Agar patch fail ho to app_links plugin ko hi hack karke simple bana do
-          PUB_APP_LINKS=$(find $HOME/.pub-cache -path "*app_links-*/android/build.gradle" | head -1)
-          if [ -f "$PUB_APP_LINKS" ]; then
-            cat > "$PUB_APP_LINKS" << 'EOF'
-          group 'com.rralvin.app_links'
-          version '1.0-SNAPSHOT'
-          buildscript {
-              ext.kotlin_version = '1.7.10'
-              repositories { google(); mavenCentral() }
-              dependencies { classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version" }
-          }
-          rootProject.allprojects {
-              repositories { google(); mavenCentral() }
-          }
-          apply plugin: 'com.android.library'
-          apply plugin: 'kotlin-android'
-          android {
-              namespace "com.rralvin.app_links"
-              compileSdk 34
-              defaultConfig { minSdk 21 }
-          }
-          EOF
-            echo "Patched $PUB_APP_LINKS to simple version"
-          fi
+          echo "New android/app/build.gradle created:"
+          ls -la android/app/build.gradle
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter build apk --release --split-per-abi
+          flutter pub get
+          flutter build apk --release --split-per-abi -v
 
       - uses: actions/upload-artifact@v4
         with:
           name: jeewanrakshak-apks
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
+          
