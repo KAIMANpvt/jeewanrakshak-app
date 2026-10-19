@@ -6,19 +6,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare Flutter Project
+      - name: Prepare Project
         run: |
-          # 1. Agar zip hai to unzip karo
           if ls *.zip 1> /dev/null 2>&1; then
             sudo apt-get install -y unzip
             for z in *.zip; do unzip -o "$z"; done
             rm -rf *.zip
           fi
-          # 2. pubspec.yaml dhoondo aur uska folder PROJECT_DIR me save karo
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
           echo "Found project at $PROJ"
-          ls -la $PROJ
 
       - uses: actions/setup-java@v4
         with:
@@ -29,14 +26,26 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Fix Old Kotlin Version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          # Kotlin version 1.4 ko 1.9.22 se replace karo
+          sed -i "s/ext.kotlin_version = '.*'/ext.kotlin_version = '1.9.22'/" android/build.gradle || true
+          sed -i "s/kotlin_version = '.*'/kotlin_version = '1.9.22'/" android/build.gradle || true
+          sed -i "s/id 'org.jetbrains.kotlin.android' version '.*'/id 'org.jetbrains.kotlin.android' version '1.9.22' apply false/" android/settings.gradle || true
+          sed -i "s/languageVersion.*1.4/languageVersion 1.8/g" android/build.gradle || true
+          # jvmTarget fix
+          sed -i "s/jvmTarget = '1.4'/jvmTarget = '1.8'/g" android/app/build.gradle || true
+          sed -i "s/jvmTarget = \"1.4\"/jvmTarget = \"1.8\"/g" android/app/build.gradle || true
+          echo "Kotlin fixed"
+
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter pub get
           flutter build apk --release
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: jeewanrakshak-apk
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
