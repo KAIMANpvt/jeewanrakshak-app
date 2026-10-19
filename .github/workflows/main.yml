@@ -16,6 +16,7 @@ jobs:
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
           echo "Found project at $PROJ"
+          ls -la $PROJ/android
 
       - uses: actions/setup-java@v4
         with:
@@ -26,18 +27,56 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Fix Old Kotlin Version
+      - name: FULL FIX for Kotlin 1.4 Error
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          # Kotlin version 1.4 ko 1.9.22 se replace karo
-          sed -i "s/ext.kotlin_version = '.*'/ext.kotlin_version = '1.9.22'/" android/build.gradle || true
-          sed -i "s/kotlin_version = '.*'/kotlin_version = '1.9.22'/" android/build.gradle || true
-          sed -i "s/id 'org.jetbrains.kotlin.android' version '.*'/id 'org.jetbrains.kotlin.android' version '1.9.22' apply false/" android/settings.gradle || true
-          sed -i "s/languageVersion.*1.4/languageVersion 1.8/g" android/build.gradle || true
-          # jvmTarget fix
-          sed -i "s/jvmTarget = '1.4'/jvmTarget = '1.8'/g" android/app/build.gradle || true
-          sed -i "s/jvmTarget = \"1.4\"/jvmTarget = \"1.8\"/g" android/app/build.gradle || true
-          echo "Kotlin fixed"
+          echo "=== Fixing all gradle files ==="
+          # 1. Gradle wrapper ko 8.0 pe update karo
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          
+          # 2. android/build.gradle ko pura naya likh do - ye sabse important hai
+          cat > android/build.gradle << 'EOF'
+          buildscript {
+              ext.kotlin_version = '1.9.22'
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath "com.android.tools.build:gradle:8.1.0"
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          # 3. app/build.gradle me jvmTarget fix karo
+          sed -i "s/jvmTarget = .*/jvmTarget = '1.8'/" android/app/build.gradle || true
+          sed -i "s/kotlinOptions {/kotlinOptions {\n        jvmTarget = '1.8'/" android/app/build.gradle || true
+          
+          # 4. settings.gradle me kotlin version fix
+          sed -i "s/1.4/1.8/g" android/settings.gradle || true
+          sed -i "s/1.6.10/1.9.22/g" android/settings.gradle || true
+          sed -i "s/1.7.10/1.9.22/g" android/settings.gradle || true
+          sed -i "s/1.8.10/1.9.22/g" android/settings.gradle || true
+          
+          cat android/build.gradle
+          cat android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
