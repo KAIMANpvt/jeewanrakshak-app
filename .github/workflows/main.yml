@@ -26,7 +26,7 @@ jobs:
           channel: 'stable'
           flutter-version: '3.32.0'
 
-      - name: Fix Gradle 8.9
+      - name: Fix Desugaring
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           rm -rf android build .dart_tool pubspec.lock
@@ -62,10 +62,29 @@ jobs:
           tasks.register("clean", Delete) { delete rootProject.buildDir }
           EOF
 
-          # YAHI MAIN FIX HAI - 8.7 ki jagah 8.12
           echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.12-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
-          
-          cat android/gradle/wrapper/gradle-wrapper.properties
+
+          # YAHI MAIN FIX HAI - desugaring enable
+          python3 << 'PY'
+          import pathlib
+          p = pathlib.Path("android/app/build.gradle").read_text()
+
+          # 1. compileOptions me coreLibraryDesugaringEnabled true add karo
+          if "coreLibraryDesugaringEnabled" not in p:
+              p = p.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true")
+
+          # 2. dependencies me desugar libs add karo
+          if "desugar_jdk_libs" not in p:
+              # dependencies block dhoondo
+              if "dependencies {" in p:
+                  p = p.replace("dependencies {", "dependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.0.4\")\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs_configuration:2.0.4\")")
+              else:
+                  p += "\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.0.4\")\n}\n"
+
+          pathlib.Path("android/app/build.gradle").write_text(p)
+          print(p)
+          PY
+
           flutter pub get
 
       - name: Build APK
