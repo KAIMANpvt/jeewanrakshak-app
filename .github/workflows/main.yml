@@ -26,19 +26,15 @@ jobs:
           channel: 'stable'
           flutter-version: '3.32.0'
 
-      - name: SUPPORT sensors_plus 7.1.1 - No Downgrade
+      - name: Fix Gradle 8.9
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           rm -rf android build .dart_tool pubspec.lock
-          
-          # Original pubspec ko wapas lao
           git checkout -- pubspec.yaml || true
           
-          # Naya android folder LATEST Flutter 3.32 se banao - ye Kotlin 2.1 support karta hai
           flutter pub get
           flutter create --platforms=android .
 
-          # local.properties me sab kuch set karo - isse app_links wala VersionUtils error bhi fix hoga
           cat > android/local.properties << 'EOF'
           sdk.dir=/usr/local/lib/android/sdk
           flutter.compileSdkVersion=35
@@ -50,13 +46,12 @@ jobs:
           flutter.buildMode=release
           EOF
 
-          # android/build.gradle ko Kotlin 2.1.0 + AGP 8.3.0 pe lao
           cat > android/build.gradle << 'EOF'
           buildscript {
               ext.kotlin_version = '2.1.0'
               repositories { google(); mavenCentral() }
               dependencies {
-                  classpath "com.android.tools.build:gradle:8.3.0"
+                  classpath "com.android.tools.build:gradle:8.7.3"
                   classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
               }
           }
@@ -67,16 +62,15 @@ jobs:
           tasks.register("clean", Delete) { delete rootProject.buildDir }
           EOF
 
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          # YAHI MAIN FIX HAI - 8.7 ki jagah 8.12
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.12-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
           
-          cat android/build.gradle
-          cat android/local.properties
+          cat android/gradle/wrapper/gradle-wrapper.properties
           flutter pub get
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi
 
       - uses: actions/upload-artifact@v4
         with:
