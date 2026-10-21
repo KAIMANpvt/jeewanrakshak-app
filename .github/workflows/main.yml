@@ -15,7 +15,6 @@ jobs:
           fi
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
-          echo "Found at $PROJ"
 
       - uses: actions/setup-java@v4
         with:
@@ -25,51 +24,58 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.5'
+          flutter-version: '3.32.0'
 
-      - name: FORCE Downgrade Bad Packages
+      - name: SUPPORT sensors_plus 7.1.1 - No Downgrade
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           rm -rf android build .dart_tool pubspec.lock
           
-          # Python se pubspec.yaml ko fix karo - ye 100% kaam karega
-          python3 << 'PY'
-          import pathlib, re
-          p = pathlib.Path("pubspec.yaml").read_text()
-          # purane versions hatao aur naye force karo
-          p = re.sub(r"sensors_plus:\s*[^\n]+", "sensors_plus: 6.0.1", p)
-          p = re.sub(r"app_links:\s*[^\n]+", "app_links: 3.4.4", p)
-          p = re.sub(r"geocoding:\s*[^\n]+", "geocoding: 2.2.2", p)
-          p = re.sub(r"geocoding_android:\s*[^\n]+", "geocoding_android: 2.1.0", p)
-
-          # Agar dependency_overrides nahi hai to add karo
-          if "dependency_overrides:" not in p:
-              p += "\ndependency_overrides:\n  sensors_plus: 6.0.1\n  app_links: 3.4.4\n  geocoding: 2.2.2\n  geocoding_android: 2.1.0\n"
-          else:
-              # existing overrides me bhi force add karo
-              if "sensors_plus" not in p.split("dependency_overrides:")[1]:
-                  p = p.replace("dependency_overrides:", "dependency_overrides:\n  sensors_plus: 6.0.1\n  app_links: 3.4.4\n  geocoding: 2.2.2\n  geocoding_android: 2.1.0")
-
-          pathlib.Path("pubspec.yaml").write_text(p)
-          print("=== NEW PUBSPEC ===")
-          print(p)
-          PY
-
+          # Original pubspec ko wapas lao
+          git checkout -- pubspec.yaml || true
+          
+          # Naya android folder LATEST Flutter 3.32 se banao - ye Kotlin 2.1 support karta hai
           flutter pub get
           flutter create --platforms=android .
 
+          # local.properties me sab kuch set karo - isse app_links wala VersionUtils error bhi fix hoga
           cat > android/local.properties << 'EOF'
           sdk.dir=/usr/local/lib/android/sdk
-          flutter.compileSdkVersion=34
-          flutter.targetSdkVersion=34
-          flutter.minSdkVersion=21
-          flutter.ndkVersion=26.3.11579264
+          flutter.compileSdkVersion=35
+          flutter.targetSdkVersion=35
+          flutter.minSdkVersion=23
+          flutter.ndkVersion=27.0.12077973
+          flutter.versionCode=1
+          flutter.versionName=1.0.0
+          flutter.buildMode=release
           EOF
+
+          # android/build.gradle ko Kotlin 2.1.0 + AGP 8.3.0 pe lao
+          cat > android/build.gradle << 'EOF'
+          buildscript {
+              ext.kotlin_version = '2.1.0'
+              repositories { google(); mavenCentral() }
+              dependencies {
+                  classpath "com.android.tools.build:gradle:8.3.0"
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+              }
+          }
+          allprojects { repositories { google(); mavenCentral() } }
+          rootProject.buildDir = '../build'
+          subprojects { project.buildDir = "${rootProject.buildDir}/${project.name}" }
+          subprojects { project.evaluationDependsOn(':app') }
+          tasks.register("clean", Delete) { delete rootProject.buildDir }
+          EOF
+
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          
+          cat android/build.gradle
+          cat android/local.properties
+          flutter pub get
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter pub get
           flutter build apk --release --split-per-abi
 
       - uses: actions/upload-artifact@v4
