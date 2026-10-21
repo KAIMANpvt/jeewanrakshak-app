@@ -15,6 +15,7 @@ jobs:
           fi
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
+          echo "Found at $PROJ"
 
       - uses: actions/setup-java@v4
         with:
@@ -24,50 +25,54 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.22.3'
+          flutter-version: '3.24.5'
 
-      - name: RECREATE Android Folder - Ultimate Fix
+      - name: FORCE Downgrade Bad Packages
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "Original pubspec.yaml:"
-          cat pubspec.yaml | grep -A2 app_links || true
+          rm -rf android build .dart_tool pubspec.lock
+          
+          # Python se pubspec.yaml ko fix karo - ye 100% kaam karega
+          python3 << 'PY'
+          import pathlib, re
+          p = pathlib.Path("pubspec.yaml").read_text()
+          # purane versions hatao aur naye force karo
+          p = re.sub(r"sensors_plus:\s*[^\n]+", "sensors_plus: 6.0.1", p)
+          p = re.sub(r"app_links:\s*[^\n]+", "app_links: 3.4.4", p)
+          p = re.sub(r"geocoding:\s*[^\n]+", "geocoding: 2.2.2", p)
+          p = re.sub(r"geocoding_android:\s*[^\n]+", "geocoding_android: 2.1.0", p)
 
-          # 1. Purana kharab android folder hatao
-          rm -rf android
-          
-          # 2. pubspec.lock hatao aur dependencies fix karo
-          rm -f pubspec.lock
-          sed -i 's/app_links:.*/app_links: ^3.4.4/' pubspec.yaml || true
-          sed -i 's/geocoding:.*/geocoding: ^2.2.2/' pubspec.yaml || true
-          sed -i 's/geocoding_android:.*/geocoding_android: 2.1.0/' pubspec.yaml || true
-          
-          # 3. Naya saaf android folder banao - ye Flutter 3.22 ke hisab se banega
-          flutter clean
+          # Agar dependency_overrides nahi hai to add karo
+          if "dependency_overrides:" not in p:
+              p += "\ndependency_overrides:\n  sensors_plus: 6.0.1\n  app_links: 3.4.4\n  geocoding: 2.2.2\n  geocoding_android: 2.1.0\n"
+          else:
+              # existing overrides me bhi force add karo
+              if "sensors_plus" not in p.split("dependency_overrides:")[1]:
+                  p = p.replace("dependency_overrides:", "dependency_overrides:\n  sensors_plus: 6.0.1\n  app_links: 3.4.4\n  geocoding: 2.2.2\n  geocoding_android: 2.1.0")
+
+          pathlib.Path("pubspec.yaml").write_text(p)
+          print("=== NEW PUBSPEC ===")
+          print(p)
+          PY
+
           flutter pub get
           flutter create --platforms=android .
 
-          # 4. SDK 34 set karo local.properties me
           cat > android/local.properties << 'EOF'
           sdk.dir=/usr/local/lib/android/sdk
           flutter.compileSdkVersion=34
           flutter.targetSdkVersion=34
           flutter.minSdkVersion=21
           flutter.ndkVersion=26.3.11579264
-          flutter.versionCode=1
-          flutter.versionName=1.0.0
           EOF
-
-          echo "New android/app/build.gradle created:"
-          ls -la android/app/build.gradle
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter pub get
-          flutter build apk --release --split-per-abi -v
+          flutter build apk --release --split-per-abi
 
       - uses: actions/upload-artifact@v4
         with:
           name: jeewanrakshak-apks
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
-          
