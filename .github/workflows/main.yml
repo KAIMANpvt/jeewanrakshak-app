@@ -5,36 +5,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Prepare Project
         run: |
-          if ls *.zip 1> /dev/null 2>&1; then
-            sudo apt-get install -y unzip
-            for z in *.zip; do unzip -o "$z"; done
-            rm -rf *.zip
-          fi
+          if ls *.zip 1> /dev/null 2>&1; then sudo apt-get install -y unzip; for z in *.zip; do unzip -o "$z"; done; rm -rf *.zip; fi
           PROJ=$(find . -type f -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "PROJECT_DIR=$PROJ" >> $GITHUB_ENV
-
       - uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
+        with: { distribution: 'zulu', java-version: '17' }
       - uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          flutter-version: '3.32.0'
-
-      - name: Fix Desugaring - Direct KTS Rewrite
+        with: { channel: 'stable', flutter-version: '3.32.0' }
+      - name: Fix speech_to_text Kotlin Error
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           rm -rf android build .dart_tool pubspec.lock
           
+          # 1. speech_to_text ko stable version pe lao
+          python3 << 'PY'
+          import pathlib, re
+          p = pathlib.Path("pubspec.yaml").read_text()
+          # speech_to_text ka version force 6.6.2
+          p = re.sub(r"speech_to_text:\s*[^\n]+", "speech_to_text: 6.6.2", p)
+          pathlib.Path("pubspec.yaml").write_text(p)
+          print(p)
+          PY
+
           flutter pub get
           flutter create --platforms=android .
 
-          # local.properties
           cat > android/local.properties << 'EOF'
           sdk.dir=/usr/local/lib/android/sdk
           flutter.compileSdkVersion=35
@@ -45,8 +42,9 @@ jobs:
           flutter.versionName=1.0.0
           flutter.buildMode=release
           EOF
+          
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.12-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
 
-          # root build.gradle.kts
           cat > android/build.gradle.kts << 'EOF'
           buildscript {
               val kotlin_version by extra("2.1.0")
@@ -63,63 +61,27 @@ jobs:
           tasks.register<Delete>("clean") { delete(rootProject.buildDir) }
           EOF
 
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.12-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
-
-          # YE HAI MAIN FIX - app/build.gradle.kts ko desugaring ke sath naya banao
-          # namespace purane file se nikal lo
           NS=$(grep "namespace" android/app/build.gradle.kts | head -1 | cut -d'"' -f2)
-          echo "Namespace: $NS"
-
           cat > android/app/build.gradle.kts << EOF
-          plugins {
-              id("com.android.application")
-              id("kotlin-android")
-              id("dev.flutter.flutter-gradle-plugin")
-          }
-
+          plugins { id("com.android.application"); id("kotlin-android"); id("dev.flutter.flutter-gradle-plugin") }
           android {
               namespace = "$NS"
               compileSdk = 35
               ndkVersion = "27.0.12077973"
-
               compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_11
-                  targetCompatibility = JavaVersion.VERSION_11
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
                   isCoreLibraryDesugaringEnabled = true
               }
-
-              kotlinOptions {
-                  jvmTarget = JavaVersion.VERSION_11.toString()
-              }
-
-              sourceSets {
-                  getByName("main") { java.srcDirs("src/main/kotlin") }
-              }
-
-              defaultConfig {
-                  applicationId = "$NS"
-                  minSdk = 23
-                  targetSdk = 35
-                  versionCode = flutter.versionCode
-                  versionName = flutter.versionName
-              }
-
-              buildTypes {
-                  release {
-                      isMinifyEnabled = false
-                      isShrinkResources = false
-                  }
-              }
+              kotlinOptions { jvmTarget = "17" }
+              defaultConfig { applicationId = "$NS"; minSdk = 23; targetSdk = 35; versionCode = flutter.versionCode; versionName = flutter.versionName }
+              buildTypes { release { isMinifyEnabled = false; isShrinkResources = false } }
           }
-
           dependencies {
-              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_configuration:2.0.4")
+              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_configuration:2.1.4")
           }
-
-          flutter {
-              source = "../.."
-          }
+          flutter { source = "../.." }
           EOF
 
           cat android/app/build.gradle.kts
@@ -127,7 +89,7 @@ jobs:
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter build apk --release --split-per-abi -v
+        run: flutter build apk --release --split-per-abi
 
       - uses: actions/upload-artifact@v4
         with:
