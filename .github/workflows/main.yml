@@ -14,19 +14,19 @@ jobs:
         with: { distribution: 'zulu', java-version: '17' }
       - uses: subosito/flutter-action@v2
         with: { channel: 'stable', flutter-version: '3.32.0' }
-      - name: Fix speech_to_text Kotlin Error
+      - name: Fix speech_to_text - Use Latest 7.x
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           rm -rf android build .dart_tool pubspec.lock
           
-          # 1. speech_to_text ko stable version pe lao
+          # speech_to_text ko latest 7.x pe lao - 6.6.2 nahi
           python3 << 'PY'
           import pathlib, re
-          p = pathlib.Path("pubspec.yaml").read_text()
-          # speech_to_text ka version force 6.6.2
-          p = re.sub(r"speech_to_text:\s*[^\n]+", "speech_to_text: 6.6.2", p)
-          pathlib.Path("pubspec.yaml").write_text(p)
-          print(p)
+          text = pathlib.Path("pubspec.yaml").read_text()
+          # purana hata ke naya lagao
+          text = re.sub(r"speech_to_text:\s*[^\n]+", "speech_to_text: ^7.3.0", text)
+          pathlib.Path("pubspec.yaml").write_text(text)
+          print(text)
           PY
 
           flutter pub get
@@ -79,12 +79,10 @@ jobs:
           }
           dependencies {
               coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_configuration:2.1.4")
           }
           flutter { source = "../.." }
           EOF
 
-          cat android/app/build.gradle.kts
           flutter pub get
 
       - name: Build APK
